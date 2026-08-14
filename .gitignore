@@ -9,3 +9,5 @@ dist/
 coverage/
 .vscode/
 .idea/
+
+backend/instance/*.db
