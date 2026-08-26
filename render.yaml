@@ -1,12 +1,11 @@
 # Render blueprint — https://render.com/docs/blueprint-spec
-# Create a new Blueprint instance from the repository and Render provisions the
-# database, wires DATABASE_URL in, generates the secrets and deploys the image.
-
-databases:
-  - name: consistency-ai-db
-    databaseName: consistency_ai
-    user: consistency_user
-    plan: free
+# Create a Blueprint instance from the repository and Render generates the
+# secrets, builds the image and deploys it.
+#
+# The database is deliberately NOT provisioned here. Render's free Postgres is
+# deleted 30 days after creation, which is a poor home for data you want to
+# keep. Point DATABASE_URL at any Postgres you like — Neon's free tier does not
+# expire — and set it in the dashboard, where it is not overwritten on sync.
 
 services:
   - type: web
@@ -25,10 +24,11 @@ services:
         generateValue: true
       - key: JWT_SECRET_KEY
         generateValue: true
+      # Set in the Render dashboard: the full Postgres connection string.
+      # `postgres://` and `postgresql://` are both accepted — the app rewrites
+      # them to the driver SQLAlchemy 2 expects.
       - key: DATABASE_URL
-        fromDatabase:
-          name: consistency-ai-db
-          property: connectionString
+        sync: false
       # The SPA and the API share one origin here, so no cross-origin grant is needed.
       - key: CORS_ORIGINS
         value: ""
