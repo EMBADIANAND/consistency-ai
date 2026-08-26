@@ -1,35 +1,40 @@
-from flask import Blueprint, jsonify, request
-from pydantic import BaseModel, Field, ValidationError
+from flask import Blueprint, g, jsonify
+
+from ...core.auth import require_auth
+from ...core.database import db
+from ...models.user import User
+from ...schemas.user import LoginPayload, RegisterPayload, UserResponse
 from ...services.auth_service import AuthService
+from ..helpers import ApiError, serialize, validated
 
 auth_bp = Blueprint("auth", __name__)
 service = AuthService()
 
-class AuthPayload(BaseModel):
-    email: str
-    password: str = Field(min_length=8, max_length=128)
-    display_name: str | None = Field(default=None, min_length=1, max_length=100)
 
 @auth_bp.post("/auth/register")
 def register():
+    payload = validated(RegisterPayload)
     try:
-        payload = AuthPayload.model_validate(request.get_json(silent=True) or {})
-        if not payload.display_name:
-            return jsonify({"error": "display_name is required"}), 400
-        token = service.register(payload.email, payload.password, payload.display_name)
-        return jsonify({"access_token": token}), 201
-    except ValidationError as exc:
-        return jsonify({"error": "Invalid registration data", "details": exc.errors()}), 400
+        user, token = service.register(payload.email, payload.password, payload.display_name)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 409
+        raise ApiError(str(exc), 409) from exc
+    return jsonify({"access_token": token, "user": serialize(UserResponse, user)}), 201
+
 
 @auth_bp.post("/auth/login")
 def login():
+    payload = validated(LoginPayload)
     try:
-        payload = AuthPayload.model_validate(request.get_json(silent=True) or {})
-        token = service.login(payload.email, payload.password)
-        return jsonify({"access_token": token})
-    except ValidationError as exc:
-        return jsonify({"error": "Invalid login data", "details": exc.errors()}), 400
-    except ValueError:
-        return jsonify({"error": "Invalid email or password"}), 401
+        user, token = service.login(payload.email, payload.password)
+    except ValueError as exc:
+        raise ApiError("Invalid email or password", 401) from exc
+    return jsonify({"access_token": token, "user": serialize(UserResponse, user)})
+
+
+@auth_bp.get("/auth/me")
+@require_auth
+def me():
+    user = db.session.get(User, g.user_id)
+    if user is None:
+        raise ApiError("Account no longer exists", 401)
+    return jsonify(serialize(UserResponse, user))

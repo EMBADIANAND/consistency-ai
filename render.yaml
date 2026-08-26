@@ -1,0 +1,40 @@
+# Render blueprint — https://render.com/docs/blueprint-spec
+# Create a new Blueprint instance from the repository and Render provisions the
+# database, wires DATABASE_URL in, generates the secrets and deploys the image.
+
+databases:
+  - name: consistency-ai-db
+    databaseName: consistency_ai
+    user: consistency_user
+    plan: free
+
+services:
+  - type: web
+    name: consistency-ai
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: PORT
+        value: 8000
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: consistency-ai-db
+          property: connectionString
+      # The SPA and the API share one origin here, so no cross-origin grant is needed.
+      - key: CORS_ORIGINS
+        value: ""
+      - key: AI_PROVIDER
+        value: mock
+      # Set this in the Render dashboard and flip AI_PROVIDER to `anthropic`
+      # to answer Coach and Reports with a model instead of the rule engine.
+      - key: ANTHROPIC_API_KEY
+        sync: false

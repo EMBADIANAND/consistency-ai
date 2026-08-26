@@ -1,34 +1,39 @@
-from flask import Blueprint, jsonify, request
-from pydantic import ValidationError
-from ...schemas.goal import GoalCreate, GoalResponse
+from flask import Blueprint, g, jsonify
+
+from ...core.auth import require_auth
+from ...schemas.goal import GoalCreate, GoalResponse, GoalUpdate
 from ...services.goal_service import GoalService
+from ..helpers import ApiError, serialize, serialize_many, validated
 
 goals_bp = Blueprint("goals", __name__)
 service = GoalService()
 
-# Authentication is deliberately represented by a boundary for now.
-# Production auth middleware will supply the authenticated user ID.
-def current_user_id() -> int:
-    user_id = request.headers.get("X-Demo-User-ID")
-    if not user_id or not user_id.isdigit():
-        raise PermissionError("Authenticated user required")
-    return int(user_id)
 
 @goals_bp.get("/goals")
+@require_auth
 def list_goals():
-    try:
-        goals = service.list_goals(current_user_id())
-        return jsonify([GoalResponse.model_validate(g).model_dump() for g in goals])
-    except PermissionError as exc:
-        return jsonify({"error": str(exc)}), 401
+    return jsonify(serialize_many(GoalResponse, service.list_goals(g.user_id)))
+
 
 @goals_bp.post("/goals")
+@require_auth
 def create_goal():
-    try:
-        payload = GoalCreate.model_validate(request.get_json(silent=True) or {})
-        goal = service.create_goal(current_user_id(), payload)
-        return jsonify(GoalResponse.model_validate(goal).model_dump()), 201
-    except PermissionError as exc:
-        return jsonify({"error": str(exc)}), 401
-    except ValidationError as exc:
-        return jsonify({"error": "Invalid goal", "details": exc.errors()}), 400
+    goal = service.create_goal(g.user_id, validated(GoalCreate))
+    return jsonify(serialize(GoalResponse, goal)), 201
+
+
+@goals_bp.patch("/goals/<int:goal_id>")
+@require_auth
+def update_goal(goal_id: int):
+    goal = service.update_goal(g.user_id, goal_id, validated(GoalUpdate))
+    if goal is None:
+        raise ApiError("Goal not found", 404)
+    return jsonify(serialize(GoalResponse, goal))
+
+
+@goals_bp.delete("/goals/<int:goal_id>")
+@require_auth
+def delete_goal(goal_id: int):
+    if not service.delete_goal(g.user_id, goal_id):
+        raise ApiError("Goal not found", 404)
+    return "", 204

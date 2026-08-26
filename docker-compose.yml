@@ -1,0 +1,41 @@
+# Production-shaped local stack: the app image plus a real MySQL database.
+# Start with:  docker compose up --build
+# Then open:   http://localhost:8000
+
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: consistency_ai
+      MYSQL_USER: consistency_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-consistency-local-password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root-local-password}
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "3307:3306"
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      FLASK_ENV: production
+      PORT: 8000
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in your shell or .env}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY in your shell or .env}
+      DATABASE_URL: mysql+pymysql://consistency_user:${MYSQL_PASSWORD:-consistency-local-password}@db:3306/consistency_ai
+      CORS_ORIGINS: http://localhost:8000
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports:
+      - "8000:8000"
+
+volumes:
+  db-data:
